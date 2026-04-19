@@ -264,6 +264,7 @@ const MessageInput = () => {
   const [text, setText] = useState("");
   const [mediaPreview, setMediaPreview] = useState(null);
   const [mediaFile, setMediaFile] = useState(null);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [pickerTab, setPickerTab] = useState("emoji");
   const [mediaSearch, setMediaSearch] = useState("");
@@ -335,20 +336,71 @@ const MessageInput = () => {
     }
   };
 
-  const fileToDataUrl = (file) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result !== "string") {
-          reject(new Error("Could not read selected media"));
-          return;
-        }
-
-        resolve(reader.result);
-      };
-      reader.onerror = () => reject(new Error("Could not read selected media"));
-      reader.readAsDataURL(file);
+  const requestCloudinaryUploadSignature = async (resourceType) => {
+    const response = await fetch("/api/media/sign-upload", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ resourceType }),
     });
+
+    if (!response.ok) {
+      let errorMessage = "Unable to prepare media upload";
+
+      try {
+        const payload = await response.json();
+        errorMessage = payload?.error || payload?.message || errorMessage;
+      } catch {
+        // Ignore JSON parse failures for non-JSON error payloads.
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  };
+
+  const uploadMediaToCloudinary = async (file) => {
+    const resourceType = file.type.startsWith("video/") ? "video" : "image";
+    const signaturePayload = await requestCloudinaryUploadSignature(resourceType);
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("api_key", signaturePayload.apiKey);
+    formData.append("timestamp", String(signaturePayload.timestamp));
+    formData.append("signature", signaturePayload.signature);
+    formData.append("folder", signaturePayload.folder);
+
+    const uploadResponse = await fetch(
+      `https://api.cloudinary.com/v1_1/${signaturePayload.cloudName}/${signaturePayload.resourceType}/upload`,
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
+
+    if (!uploadResponse.ok) {
+      let errorMessage = "Cloud upload failed";
+
+      try {
+        const payload = await uploadResponse.json();
+        errorMessage = payload?.error?.message || errorMessage;
+      } catch {
+        // Ignore JSON parse failures for non-JSON error payloads.
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    const uploadPayload = await uploadResponse.json();
+
+    if (!uploadPayload?.secure_url) {
+      throw new Error("Cloud upload did not return a secure URL");
+    }
+
+    return uploadPayload.secure_url;
+  };
 
   const clearComposer = () => {
     setText("");
@@ -373,8 +425,8 @@ const MessageInput = () => {
       return;
     }
 
-    if (file.size > 30 * 1024 * 1024) {
-      toast.error("Media must be 30MB or smaller");
+    if (file.size > 100 * 1024 * 1024) {
+      toast.error("Media must be 100MB or smaller");
       return;
     }
 
@@ -405,7 +457,8 @@ const MessageInput = () => {
       let mediaMeta;
 
       if (mediaFile) {
-        imagePayload = await fileToDataUrl(mediaFile);
+        setIsUploadingMedia(true);
+        imagePayload = await uploadMediaToCloudinary(mediaFile);
         mediaMeta = {
           mimeType: mediaFile.type || null,
           fileName: mediaFile.name || null,
@@ -421,7 +474,9 @@ const MessageInput = () => {
       clearComposer();
     } catch (error) {
       console.error("Failed to send message:", error);
-      toast.error("Unable to send media. Try again.");
+      toast.error(error?.message || "Unable to send media. Try again.");
+    } finally {
+      setIsUploadingMedia(false);
     }
   };
 
@@ -455,7 +510,7 @@ const MessageInput = () => {
       setIsPickerOpen(false);
     } catch (error) {
       console.error("Failed to send preset media:", error);
-      toast.error("Unable to send media. Try again.");
+      toast.error(error?.message || "Unable to send media. Try again.");
     }
   };
 
@@ -678,6 +733,7 @@ const MessageInput = () => {
             className={`hidden sm:flex btn btn-circle ${mediaPreview ? "text-primary" : "text-base-content/60"}`}
             onClick={() => fileInputRef.current?.click()}
             title="Attach media"
+            disabled={isUploadingMedia}
           >
             <Paperclip className="size-5" />
           </button>
@@ -686,9 +742,9 @@ const MessageInput = () => {
         <button
           type="submit"
           className="btn btn-sm btn-circle"
-          disabled={!text.trim() && !mediaFile}
+          disabled={(!text.trim() && !mediaFile) || isUploadingMedia}
         >
-          <Send className="size-5" />
+          {isUploadingMedia ? <span className="loading loading-spinner loading-xs" /> : <Send className="size-5" />}
         </button>
       </form>
     </div>

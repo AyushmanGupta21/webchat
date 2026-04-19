@@ -15,17 +15,24 @@ export async function POST(request, { params }) {
     const normalizedText = typeof text === "string" ? text.trim() : "";
 
     if (!normalizedText && !image) {
-      return NextResponse.json({ error: "Message text or image is required" }, { status: 400 });
+      return NextResponse.json({ error: "Message text or media is required" }, { status: 400 });
     }
 
     let imageUrl;
     if (image) {
-      const uploadResponse = await cloudinary.uploader.upload(image, {
-        resource_type: mediaMeta?.mimeType?.startsWith("video/") ? "video" : "image",
-        folder: "chat-media",
-      });
+      const isCloudinaryAsset =
+        typeof image === "string" && image.startsWith("https://res.cloudinary.com/");
 
-      imageUrl = uploadResponse.secure_url;
+      if (isCloudinaryAsset) {
+        imageUrl = image;
+      } else {
+        const uploadResponse = await cloudinary.uploader.upload(image, {
+          resource_type: mediaMeta?.mimeType?.startsWith("video/") ? "video" : "image",
+          folder: "chat-media",
+        });
+
+        imageUrl = uploadResponse.secure_url;
+      }
     }
 
     const createdMessage = await dbQuery(
@@ -78,6 +85,6 @@ export async function POST(request, { params }) {
 
     return NextResponse.json(newMessage, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: error?.message || "Internal server error" }, { status: 500 });
   }
 }
