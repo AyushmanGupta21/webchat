@@ -1,0 +1,50 @@
+{
+  "name": "chat-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Full-stack realtime chat app built with Next.js",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run dev:neon",
+    "dev:neon": "npm run ensure:port && node server.js",
+    "ensure:port": "kill-port 3000",
+    "build": "next build",
+    "start": "cross-env NODE_ENV=production node server.js",
+    "lint": "next lint"
+  },
+  "keywords": [
+    "nextjs",
+    "chat",
+    "postgres",
+    "neon"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.7",
+    "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.5.1",
+    "dotenv": "^17.4.2",
+    "emoji-picker-react": "^4.18.0",
+    "jsonwebtoken": "^9.0.2",
+    "lucide-react": "^0.459.0",
+    "next": "^15.2.0",
+    "pg": "^8.20.0",
+    "pusher": "^5.3.3",
+    "pusher-js": "^8.5.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hot-toast": "^2.4.1",
+    "zustand": "^5.0.1"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "cross-env": "^7.0.3",
+    "daisyui": "^4.12.14",
+    "eslint": "^9.13.0",
+    "eslint-config-next": "^15.2.0",
+    "kill-port": "^2.0.1",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15"
+  }
+}
