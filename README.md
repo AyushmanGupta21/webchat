@@ -1,53 +1,59 @@
-# Full Stack Realtime Chat App (Next.js)
+# WebChat
 
-![Demo App](/public/screenshot-for-readme.png)
+Private, friend-based realtime chat application built with Next.js App Router, PostgreSQL, and Pusher Channels.
 
-Highlights:
+## What This App Does
 
-- Next.js app router for frontend and API routes
-- JWT authentication with httpOnly cookies
-- Email/password authentication flow (signup, login, and password reset)
-- Realtime messaging + online presence with Pusher Channels (Vercel-compatible)
-- Neon PostgreSQL
-- Client-side encrypted media uploads (AES-GCM) before Cloudinary storage
-- Zustand state management
-- TailwindCSS + DaisyUI styling
+- Email/password authentication with secure JWT cookie sessions
+- Friend request workflow (send, accept, reject)
+- Strict friend-only messaging, calling, wallpaper, and message search access
+- Realtime chat and signaling through Pusher Channels
+- Media upload pipeline through Cloudinary
+- Telegram-like chat interactions (reply, edit, delete, reactions, in-chat search)
 
-## Project Structure
+## Tech Stack
+
+- Frontend: Next.js, React, Zustand, Tailwind CSS, DaisyUI
+- Backend: Next.js API routes, Node.js custom server entry
+- Database: PostgreSQL (Neon-compatible) with runtime table bootstrap
+- Realtime: Pusher Channels
+- Media: Cloudinary signed uploads
+
+## Project Layout
 
 ```text
 .
 |-- src/
-|   |-- app/                    # Next.js app router pages + API routes
-|   |-- components/             # Shared UI components by domain
+|   |-- app/                    # Pages and API routes
+|   |   `-- api/
+|   |       |-- auth/
+|   |       |-- calls/
+|   |       |-- chats/
+|   |       |-- friends/
+|   |       |-- media/
+|   |       `-- messages/
+|   |-- components/             # UI components
 |   |   |-- auth/
 |   |   |-- chat/
 |   |   |-- common/
 |   |   `-- layout/
-|   |-- constants/              # App constants
-|   |-- features/               # Feature-first pages and modules
-|   |   |-- auth/pages/
-|   |   |-- chat/pages/
-|   |   `-- settings/pages/
-|   |-- lib/                    # Client utilities
-|   |-- server/                 # Server-only modules (db, auth, cloudinary, realtime)
+|   |-- features/               # Feature pages
+|   |-- server/                 # DB, auth, pusher, cloudinary utilities
 |   `-- store/                  # Zustand stores
 |-- public/                     # Static assets
-|-- server.js                   # Optional local custom server entry
-|-- jsconfig.json               # Path aliases (@/* -> src/*)
-|-- tailwind.config.js
-|-- postcss.config.js
+|-- scripts/                    # Utility scripts
+|-- server.js                   # App server entry (dev/prod)
 `-- package.json
 ```
 
 ## Environment Variables
 
-Create a `.env` file in the project root:
+Create a .env file in the root with the following values:
 
 ```bash
-DATABASE_URL=...
+DATABASE_URL=postgresql://...
 PORT=3000
-JWT_SECRET=...
+JWT_SECRET=replace_with_strong_secret
 
 CLOUDINARY_CLOUD_NAME=...
 CLOUDINARY_API_KEY=...
@@ -57,49 +63,52 @@ NEXT_PUBLIC_PUSHER_KEY=...
 NEXT_PUBLIC_PUSHER_CLUSTER=...
 PUSHER_APP_ID=...
 PUSHER_SECRET=...
+
+# Optional (GIF/sticker search)
+NEXT_PUBLIC_TENOR_API_KEY=...
+NEXT_PUBLIC_TENOR_CLIENT_KEY=webchat
 ```
 
-Auth notes:
+## Local Setup
 
-- OTP/Twilio authentication has been removed.
-
-Encrypted media notes:
-
-- Image attachments are encrypted in-browser before upload.
-- A shared media passphrase is stored locally per conversation.
-- Cloudinary stores encrypted blobs, not plaintext images.
-
-## Install
+1. Install dependencies.
 
 ```bash
 npm install
 ```
 
-## Run (Development)
+2. Start development server.
 
 ```bash
 npm run dev
 ```
 
-## Build
+3. Open the app.
 
-```bash
-npm run build
+```text
+http://localhost:3000
 ```
 
-## Run (Production)
+## NPM Scripts
 
-```bash
-npm start
-```
+- npm run dev: starts the app with the custom server for local development
+- npm run build: creates production build
+- npm start: runs production server
+- npm run lint: runs Next.js lint checks
 
-## Deploy To Vercel
+## Privacy and Access Model
 
-1. Push this project to a Git repository.
-2. Import the repository in Vercel.
-3. Set all required environment variables in Vercel Project Settings.
-4. Deploy.
+- New users do not automatically see all platform users as chat contacts.
+- Users must become friends before they can chat.
+- Friend-only guards are enforced server-side, not only in UI.
+- Protected operations include messages, reactions, edit/delete, search, wallpapers, and calls.
 
-Notes:
+## Deployment Notes
 
-- Realtime now uses Pusher, so it works with Vercel serverless runtime.
+- Set all required environment variables in your host (for example Vercel).
+- Use a reachable PostgreSQL instance and valid Pusher credentials.
+- Realtime features depend on Pusher keys being correctly configured.
+
+## License
+
+This project is licensed under the ISC License.
