@@ -3,14 +3,66 @@ import { requireAuth } from "@/server/auth.js";
 import cloudinary from "@/server/cloudinary.js";
 import { dbQuery } from "@/server/db.js";
 import { getPusherServer } from "@/server/pusher.js";
-import { getUserChannelName } from "@/lib/realtime.js";
+import { MESSAGE_EVENTS, getUserChannelName } from "@/lib/realtime.js";
+
+async function resolveReplyMessage(replyToMessageId, senderId, receiverId) {
+  if (!replyToMessageId) return null;
+
+  const parsedId = Number.parseInt(String(replyToMessageId), 10);
+  if (!Number.isFinite(parsedId)) {
+    throw new Error("Invalid reply target");
+  }
+
+  const replyMessageResult = await dbQuery(
+    `
+      SELECT
+        id::text AS "_id",
+        sender_id AS "senderId",
+        receiver_id AS "receiverId",
+        text,
+        image_url AS image,
+        deleted_by_sender AS "deletedBySender",
+        deleted_by_receiver AS "deletedByReceiver"
+      FROM messages
+      WHERE id = $1
+        AND (
+          (sender_id = $2 AND receiver_id = $3)
+          OR (sender_id = $3 AND receiver_id = $2)
+        )
+      LIMIT 1
+    `,
+    [parsedId, senderId, receiverId]
+  );
+
+  if (replyMessageResult.rowCount === 0) {
+    throw new Error("Reply message was not found in this chat");
+  }
+
+  const replyMessage = replyMessageResult.rows[0];
+  const isDeletedForSender = replyMessage.senderId === senderId && replyMessage.deletedBySender;
+  const isDeletedForReceiver = replyMessage.receiverId === senderId && replyMessage.deletedByReceiver;
+
+  if (isDeletedForSender || isDeletedForReceiver) {
+    throw new Error("Cannot reply to a deleted message");
+  }
+
+  return {
+    id: Number.parseInt(replyMessage._id, 10),
+    preview: {
+      _id: replyMessage._id,
+      senderId: replyMessage.senderId,
+      text: replyMessage.text,
+      image: replyMessage.image,
+    },
+  };
+}
 
 export async function POST(request, { params }) {
   try {
     const { user, response } = await requireAuth(request);
     if (response) return response;
 
-    const { text, image, mediaMeta } = await request.json();
+    const { text, image, mediaMeta, replyToMessageId } = await request.json();
     const { id: receiverId } = await params;
     const normalizedText = typeof text === "string" ? text.trim() : "";
 
@@ -35,6 +87,8 @@ export async function POST(request, { params }) {
       }
     }
 
+    const replyMessageMeta = await resolveReplyMessage(replyToMessageId, user._id, receiverId);
+
     const createdMessage = await dbQuery(
       `
         INSERT INTO messages (
@@ -45,9 +99,10 @@ export async function POST(request, { params }) {
           image_encrypted,
           image_iv,
           image_mime_type,
-          image_file_name
+          image_file_name,
+          reply_to_message_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING
           id::text AS "_id",
           sender_id AS "senderId",
@@ -58,6 +113,8 @@ export async function POST(request, { params }) {
           image_iv AS "imageIv",
           image_mime_type AS "imageMimeType",
           image_file_name AS "imageFileName",
+          reply_to_message_id::text AS "replyToMessageId",
+          edited_at AS "editedAt",
           created_at AS "createdAt"
       `,
       [
@@ -69,15 +126,20 @@ export async function POST(request, { params }) {
         null,
         mediaMeta?.mimeType || null,
         mediaMeta?.fileName || null,
+        replyMessageMeta?.id || null,
       ]
     );
 
-    const newMessage = createdMessage.rows[0];
+    const newMessage = {
+      ...createdMessage.rows[0],
+      reactions: [],
+      replyToMessage: replyMessageMeta?.preview || null,
+    };
 
     const pusherServer = getPusherServer();
     if (pusherServer) {
       try {
-        await pusherServer.trigger(getUserChannelName(receiverId), "newMessage", newMessage);
+        await pusherServer.trigger(getUserChannelName(receiverId), MESSAGE_EVENTS.NEW, newMessage);
       } catch {
         // Do not fail message persistence if realtime delivery is temporarily unavailable.
       }

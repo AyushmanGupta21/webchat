@@ -2,6 +2,17 @@ export const ONLINE_PRESENCE_CHANNEL = "presence-chatty-online";
 export const USER_CHANNEL_PREFIX = "private-user-";
 export const CALL_SIGNAL_EVENT = "call:signal";
 
+export const MESSAGE_EVENTS = {
+  NEW: "newMessage",
+  UPDATED: "message:updated",
+  DELETED: "message:deleted",
+  REACTION: "message:reaction",
+};
+
+export const CHAT_EVENTS = {
+  WALLPAPER_UPDATED: "chat:wallpaper-updated",
+};
+
 export const CALL_SIGNAL_TYPES = {
   OFFER: "offer",
   ANSWER: "answer",

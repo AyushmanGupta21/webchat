@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "@/store/useChatStore";
-import { Paperclip, Search, Send, Smile, X } from "lucide-react";
+import { CornerUpLeft, Paperclip, Pencil, Search, Send, Smile, X } from "lucide-react";
 import EmojiPicker, { EmojiStyle } from "emoji-picker-react";
 import toast from "react-hot-toast";
 
@@ -282,7 +282,21 @@ const MessageInput = () => {
   const uploadPromiseRef = useRef(null);
   const uploadAbortRef = useRef(null);
   const uploadSessionRef = useRef(0);
-  const { sendMessage } = useChatStore();
+  const {
+    sendMessage,
+    updateMessage,
+    replyToMessage,
+    setReplyToMessage,
+    editingMessage,
+    cancelEditMessage,
+  } = useChatStore();
+
+  useEffect(() => {
+    if (!editingMessage) return;
+
+    setText(editingMessage.text || "");
+    setIsPickerOpen(false);
+  }, [editingMessage]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -553,6 +567,19 @@ const MessageInput = () => {
 
     try {
       setIsSendingMessage(true);
+
+      if (editingMessage) {
+        if (mediaFile) {
+          toast.error("Remove attachment before editing this message.");
+          return;
+        }
+
+        await updateMessage(editingMessage._id, text.trim());
+        setText("");
+        cancelEditMessage();
+        return;
+      }
+
       let imagePayload;
       let mediaMeta;
 
@@ -580,9 +607,11 @@ const MessageInput = () => {
         text: text.trim(),
         image: imagePayload,
         mediaMeta,
+        replyToMessageId: replyToMessage?._id || null,
       });
 
       clearComposer();
+      setReplyToMessage(null);
     } catch (error) {
       console.error("Failed to send message:", error);
       toast.error(error?.message || "Unable to send media. Try again.");
@@ -608,6 +637,11 @@ const MessageInput = () => {
 
   const sendPresetMedia = async (url, fileName, mimeType) => {
     try {
+      if (editingMessage) {
+        toast.error("Finish editing before sending media.");
+        return;
+      }
+
       await sendMessage({
         text: text.trim(),
         image: url,
@@ -615,9 +649,11 @@ const MessageInput = () => {
           mimeType,
           fileName,
         },
+        replyToMessageId: replyToMessage?._id || null,
       });
 
       clearComposer();
+      setReplyToMessage(null);
       setIsPickerOpen(false);
     } catch (error) {
       console.error("Failed to send preset media:", error);
@@ -627,6 +663,49 @@ const MessageInput = () => {
 
   return (
     <div className="p-4 w-full relative">
+      {(replyToMessage || editingMessage) && (
+        <div className="mb-3 rounded-xl border border-base-300 bg-base-200 px-3 py-2 text-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              {editingMessage ? (
+                <div className="flex items-center gap-2 text-primary mb-1">
+                  <Pencil className="size-4" />
+                  <span className="font-medium">Editing message</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-primary mb-1">
+                  <CornerUpLeft className="size-4" />
+                  <span className="font-medium">Replying</span>
+                </div>
+              )}
+
+              {editingMessage ? (
+                <p className="truncate text-base-content/80">{editingMessage.text || "(No text)"}</p>
+              ) : (
+                <p className="truncate text-base-content/80">
+                  {replyToMessage?.text || (replyToMessage?.image ? "Media attachment" : "Message")}
+                </p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs btn-circle"
+              onClick={() => {
+                if (editingMessage) {
+                  cancelEditMessage();
+                  setText("");
+                } else {
+                  setReplyToMessage(null);
+                }
+              }}
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {isPickerOpen && (
         <div
           ref={pickerRef}
@@ -847,7 +926,7 @@ const MessageInput = () => {
           <input
             type="text"
             className="w-full input input-bordered rounded-lg input-sm sm:input-md"
-            placeholder="Type a message..."
+            placeholder={editingMessage ? "Edit message..." : "Type a message..."}
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
