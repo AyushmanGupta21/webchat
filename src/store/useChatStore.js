@@ -308,11 +308,21 @@ export const useChatStore = create((set, get) => ({
   cancelEditMessage: () => set({ editingMessage: null }),
 
   setSelectedUser: (selectedUser) =>
-    set({
-      selectedUser,
-      replyToMessage: null,
-      editingMessage: null,
-      focusedMessageId: null,
-      chatWallpaper: null,
+    set((state) => {
+      const previousUserId = state.selectedUser?._id || null;
+      const nextUserId = selectedUser?._id || null;
+
+      // Clicking the already selected chat should not clear wallpaper/state.
+      if (previousUserId && nextUserId && previousUserId === nextUserId) {
+        return state;
+      }
+
+      return {
+        selectedUser,
+        replyToMessage: null,
+        editingMessage: null,
+        focusedMessageId: null,
+        chatWallpaper: null,
+      };
     }),
 }));
