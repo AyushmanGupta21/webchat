@@ -61,26 +61,38 @@ export async function GET(request) {
 
     const searchResults = await dbQuery(
       `
+        WITH matched_messages AS (
+          SELECT
+            m.id,
+            m.text,
+            m.image_url,
+            m.created_at,
+            m.sender_id,
+            m.receiver_id,
+            CASE
+              WHEN m.sender_id = $1 THEN m.receiver_id
+              ELSE m.sender_id
+            END AS chat_user_id
+          FROM messages m
+          WHERE ${conditions.join(" AND ")}
+        )
+
         SELECT
-          m.id::text AS "_id",
-          m.text,
-          m.image_url AS image,
-          m.created_at AS "createdAt",
-          m.sender_id AS "senderId",
-          m.receiver_id AS "receiverId",
-          CASE
-            WHEN m.sender_id = $1 THEN m.receiver_id
-            ELSE m.sender_id
-          END AS "chatUserId",
+          mm.id::text AS "_id",
+          mm.text,
+          mm.image_url AS image,
+          mm.created_at AS "createdAt",
+          mm.sender_id AS "senderId",
+          mm.receiver_id AS "receiverId",
+          mm.chat_user_id AS "chatUserId",
           u.full_name AS "chatUserFullName",
           u.profile_pic AS "chatUserProfilePic"
-        FROM messages m
-        INNER JOIN users u ON u.id = CASE
-          WHEN m.sender_id = $1 THEN m.receiver_id
-          ELSE m.sender_id
-        END
-        WHERE ${conditions.join(" AND ")}
-        ORDER BY m.created_at DESC
+        FROM matched_messages mm
+        INNER JOIN friendships f
+          ON f.user_a_id = LEAST($1::uuid, mm.chat_user_id)
+         AND f.user_b_id = GREATEST($1::uuid, mm.chat_user_id)
+        INNER JOIN users u ON u.id = mm.chat_user_id
+        ORDER BY mm.created_at DESC
         LIMIT 80
       `,
       params

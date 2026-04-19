@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Image as ImageIcon, MoreVertical, Phone, Video, X } from "lucide-react";
+import { Image as ImageIcon, MoreVertical, Phone, Search, Video, X } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useChatStore } from "@/store/useChatStore";
 import { useCallStore } from "@/store/useCallStore";
 import ChatWallpaperModal from "./ChatWallpaperModal";
+import ChatSearchPopup from "./ChatSearchPopup";
 
 const ChatHeader = () => {
   const { selectedUser, setSelectedUser } = useChatStore();
@@ -11,6 +12,7 @@ const ChatHeader = () => {
   const { startCall, callPhase, peerUser } = useCallStore();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isWallpaperModalOpen, setIsWallpaperModalOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const menuRef = useRef(null);
 
   const isPeerOnline = onlineUsers.includes(selectedUser._id);
@@ -29,7 +31,7 @@ const ChatHeader = () => {
   }, []);
 
   return (
-    <div className="p-2.5 border-b border-base-300">
+    <div className="p-2.5 border-b border-base-300 relative">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="avatar">
@@ -47,6 +49,15 @@ const ChatHeader = () => {
         </div>
 
         <div className="flex items-center gap-1" ref={menuRef}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm btn-circle"
+            onClick={() => setIsSearchOpen((prev) => !prev)}
+            title="Search messages"
+          >
+            <Search className="size-5" />
+          </button>
+
           <button
             type="button"
             className="btn btn-ghost btn-sm btn-circle"
@@ -103,6 +114,12 @@ const ChatHeader = () => {
       <ChatWallpaperModal
         isOpen={isWallpaperModalOpen}
         onClose={() => setIsWallpaperModalOpen(false)}
+      />
+
+      <ChatSearchPopup
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        selectedUser={selectedUser}
       />
     </div>
   );

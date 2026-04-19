@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/server/auth.js";
 import { dbQuery } from "@/server/db.js";
 import { getPusherServer } from "@/server/pusher.js";
+import { areUsersFriends } from "@/server/friends.js";
 import { CHAT_EVENTS, getUserChannelName } from "@/lib/realtime.js";
 
 function getPair(userId, peerId) {
@@ -58,6 +59,11 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: "Peer user id is required" }, { status: 400 });
     }
 
+    const isFriend = await areUsersFriends(user._id, peerId);
+    if (!isFriend) {
+      return NextResponse.json({ error: "Wallpaper can be set only for friends" }, { status: 403 });
+    }
+
     const [userAId, userBId] = getPair(user._id, peerId);
     const wallpaper = await getEffectiveWallpaper(userAId, userBId, user._id);
 
@@ -75,6 +81,11 @@ export async function PUT(request, { params }) {
     const { id: peerId } = await params;
     if (!peerId) {
       return NextResponse.json({ error: "Peer user id is required" }, { status: 400 });
+    }
+
+    const isFriend = await areUsersFriends(user._id, peerId);
+    if (!isFriend) {
+      return NextResponse.json({ error: "Wallpaper can be set only for friends" }, { status: 403 });
     }
 
     const payload = await request.json().catch(() => ({}));

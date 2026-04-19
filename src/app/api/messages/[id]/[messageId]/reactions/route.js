@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/server/auth.js";
 import { dbQuery } from "@/server/db.js";
 import { getPusherServer } from "@/server/pusher.js";
+import { areUsersFriends } from "@/server/friends.js";
 import { MESSAGE_EVENTS, getUserChannelName } from "@/lib/realtime.js";
 
 const MAX_EMOJI_LENGTH = 16;
@@ -54,6 +55,11 @@ export async function POST(request, { params }) {
     const parsedMessageId = Number.parseInt(String(messageId), 10);
     if (!Number.isFinite(parsedMessageId)) {
       return NextResponse.json({ error: "Invalid message id" }, { status: 400 });
+    }
+
+    const isFriend = await areUsersFriends(user._id, peerUserId);
+    if (!isFriend) {
+      return NextResponse.json({ error: "You can chat only with friends" }, { status: 403 });
     }
 
     const payload = await request.json().catch(() => ({}));

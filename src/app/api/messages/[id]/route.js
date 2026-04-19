@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/server/auth.js";
 import { dbQuery } from "@/server/db.js";
+import { areUsersFriends } from "@/server/friends.js";
 
 export async function GET(request, { params }) {
   try {
@@ -8,6 +9,11 @@ export async function GET(request, { params }) {
     if (response) return response;
 
     const { id: userToChatId } = await params;
+    const isFriend = await areUsersFriends(user._id, userToChatId);
+    if (!isFriend) {
+      return NextResponse.json({ error: "You can chat only with friends" }, { status: 403 });
+    }
+
     const messages = await dbQuery(
       `
         SELECT

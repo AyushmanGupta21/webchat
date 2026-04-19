@@ -1,10 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useChatStore } from "@/store/useChatStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import SidebarSkeleton from "./skeletons/SidebarSkeleton";
-import { Calendar, Menu, Search, User, Settings, LogOut, Bookmark, Phone, Users, Bell } from "lucide-react";
+import {
+  Bell,
+  Bookmark,
+  Check,
+  Clock3,
+  LogOut,
+  Menu,
+  Phone,
+  Search,
+  Settings,
+  User,
+  Users,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useThemeStore } from "@/store/useThemeStore";
+import toast from "react-hot-toast";
 
 const Sidebar = () => {
   const {
@@ -13,73 +27,69 @@ const Sidebar = () => {
     selectedUser,
     setSelectedUser,
     isUsersLoading,
-    searchMessages,
-    setFocusedMessage,
+    getFriendRequests,
+    friendRequestsIncoming,
+    friendRequestsOutgoing,
+    isFriendRequestsLoading,
+    isSendingFriendRequest,
+    isRespondingFriendRequest,
+    sendFriendRequest,
+    respondToFriendRequest,
   } = useChatStore();
   const { onlineUsers, authUser, logout } = useAuthStore();
   const { theme, setTheme } = useThemeStore();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [searchDate, setSearchDate] = useState("");
-  const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchThisChat, setSearchThisChat] = useState(false);
+  const [friendSearchTerm, setFriendSearchTerm] = useState("");
+  const [friendEmail, setFriendEmail] = useState("");
 
   useEffect(() => {
     getUsers();
-  }, [getUsers]);
+    getFriendRequests();
+  }, [getUsers, getFriendRequests]);
 
-  useEffect(() => {
-    const hasSearch = Boolean(searchTerm.trim() || searchDate);
-    if (!hasSearch) {
-      setSearchResults([]);
-      setIsSearching(false);
+  const filteredUsers = useMemo(() => {
+    const keyword = friendSearchTerm.trim().toLowerCase();
+    if (!keyword) return users;
+
+    return users.filter((friend) => {
+      const fullName = String(friend.fullName || "").toLowerCase();
+      const email = String(friend.email || "").toLowerCase();
+      return fullName.includes(keyword) || email.includes(keyword);
+    });
+  }, [friendSearchTerm, users]);
+
+  const handleSendFriendRequest = async (event) => {
+    event.preventDefault();
+
+    const nextEmail = friendEmail.trim();
+    if (!nextEmail) {
+      toast.error("Enter your friend's email first");
       return;
     }
 
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      setIsSearching(true);
+    try {
+      await sendFriendRequest(nextEmail);
+      toast.success("Friend request sent");
+      setFriendEmail("");
+    } catch (error) {
+      toast.error(error?.message || "Failed to send friend request");
+    }
+  };
 
-      const results = await searchMessages({
-        query: searchTerm,
-        date: searchDate,
-        userId: searchThisChat ? selectedUser?._id : "",
-      });
-
-      if (!cancelled) {
-        setSearchResults(results);
-        setIsSearching(false);
-      }
-    }, 280);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [searchDate, searchMessages, searchTerm, searchThisChat, selectedUser?._id]);
-
-  const filteredUsers = users;
-
-  const jumpToSearchResult = (result) => {
-    const matchedUser = users.find((user) => user._id === result.chatUserId) || {
-      _id: result.chatUserId,
-      fullName: result.chatUserFullName,
-      profilePic: result.chatUserProfilePic,
-    };
-
-    setSelectedUser(matchedUser);
-    setFocusedMessage(result._id);
-    setSearchTerm("");
-    setSearchDate("");
-    setSearchResults([]);
+  const handleRespondFriendRequest = async (requestId, action) => {
+    try {
+      await respondToFriendRequest(requestId, action);
+      toast.success(action === "accept" ? "Friend request accepted" : "Friend request rejected");
+    } catch (error) {
+      toast.error(error?.message || "Failed to update friend request");
+    }
   };
 
   if (isUsersLoading) return <SidebarSkeleton />;
 
   return (
     <aside className="h-full w-full md:w-[320px] lg:w-[400px] flex flex-col transition-all duration-200 bg-base-100 border-r border-base-300 relative">
-      {/* Header section (Hamburgers + Search) */}
+      {/* Header section (friend search + add friend) */}
       <div className="flex items-center gap-3 p-3">
         <button 
           onClick={() => setIsDrawerOpen(true)}
@@ -95,66 +105,101 @@ const Sidebar = () => {
 
           <input
             type="text"
-            placeholder="Search messages"
+            placeholder="Search friends"
             className="w-full bg-base-200 text-base-content placeholder-base-content/70 border-none rounded-full py-1.5 pl-10 pr-4 focus:outline-none focus:ring-1 focus:ring-primary text-sm transition-all"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
+            value={friendSearchTerm}
+            onChange={(event) => setFriendSearchTerm(event.target.value)}
           />
         </div>
-
-        <label className="btn btn-ghost btn-circle btn-sm" title="Search by date">
-          <Calendar className="size-4" />
-          <input
-            type="date"
-            className="hidden"
-            value={searchDate}
-            onChange={(event) => setSearchDate(event.target.value)}
-          />
-        </label>
       </div>
 
-      {(searchTerm || searchDate || isSearching) && (
-        <div className="px-3 pb-2">
-          <label className="label cursor-pointer py-1 px-1">
-            <span className="label-text text-xs">Search only in selected chat</span>
+      <div className="px-3 pb-2">
+        <form onSubmit={handleSendFriendRequest} className="rounded-xl border border-base-300 bg-base-100 p-2">
+          <div className="text-xs font-medium text-base-content/70 mb-1">Add friend by email</div>
+          <div className="flex items-center gap-2">
             <input
-              type="checkbox"
-              className="checkbox checkbox-xs"
-              checked={searchThisChat}
-              onChange={(event) => setSearchThisChat(event.target.checked)}
-              disabled={!selectedUser}
+              type="email"
+              className="input input-sm input-bordered w-full"
+              placeholder="friend@gmail.com"
+              value={friendEmail}
+              onChange={(event) => setFriendEmail(event.target.value)}
             />
-          </label>
-
-          <div className="max-h-64 overflow-y-auto rounded-xl border border-base-300 bg-base-100">
-            {isSearching && (
-              <div className="p-3 text-sm text-base-content/70">Searching messages...</div>
-            )}
-
-            {!isSearching && searchResults.length === 0 && (
-              <div className="p-3 text-sm text-base-content/70">No matching messages found.</div>
-            )}
-
-            {!isSearching &&
-              searchResults.map((result) => (
-                <button
-                  key={`${result._id}-${result.chatUserId}`}
-                  type="button"
-                  className="w-full border-b border-base-300 last:border-b-0 px-3 py-2 text-left hover:bg-base-200"
-                  onClick={() => jumpToSearchResult(result)}
-                >
-                  <div className="text-xs text-base-content/60">{result.chatUserFullName}</div>
-                  <div className="truncate text-sm">
-                    {result.text || (result.image ? "Media message" : "Message")}
-                  </div>
-                  <div className="text-[11px] text-base-content/60">
-                    {new Date(result.createdAt).toLocaleString()}
-                  </div>
-                </button>
-              ))}
+            <button type="submit" className="btn btn-sm btn-primary" disabled={isSendingFriendRequest}>
+              {isSendingFriendRequest ? <span className="loading loading-spinner loading-xs" /> : "Add"}
+            </button>
           </div>
-        </div>
-      )}
+        </form>
+      </div>
+
+      <div className="px-3 pb-2 space-y-2">
+        {isFriendRequestsLoading && (
+          <div className="rounded-xl border border-base-300 bg-base-100 p-3 text-sm text-base-content/70">
+            Loading friend requests...
+          </div>
+        )}
+
+        {friendRequestsIncoming.length > 0 && (
+          <div className="rounded-xl border border-base-300 bg-base-100 p-2">
+            <h4 className="px-1 py-1 text-xs font-semibold text-base-content/70 uppercase tracking-wide">
+              Friend Requests
+            </h4>
+
+            <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+              {friendRequestsIncoming.map((request) => (
+                <div key={request.id} className="rounded-lg bg-base-200 p-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <img
+                      src={request.user.profilePic || "/avatar.png"}
+                      alt={request.user.fullName}
+                      className="size-8 rounded-full border border-base-300"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{request.user.fullName}</p>
+                      <p className="truncate text-xs text-base-content/60">{request.user.email}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="btn btn-xs btn-primary"
+                      disabled={isRespondingFriendRequest}
+                      onClick={() => handleRespondFriendRequest(request.id, "accept")}
+                    >
+                      <Check className="size-3" /> Accept
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-xs btn-ghost"
+                      disabled={isRespondingFriendRequest}
+                      onClick={() => handleRespondFriendRequest(request.id, "reject")}
+                    >
+                      <X className="size-3" /> Decline
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {friendRequestsOutgoing.length > 0 && (
+          <div className="rounded-xl border border-base-300 bg-base-100 p-2">
+            <h4 className="px-1 py-1 text-xs font-semibold text-base-content/70 uppercase tracking-wide">
+              Pending Sent Requests
+            </h4>
+
+            <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+              {friendRequestsOutgoing.map((request) => (
+                <div key={request.id} className="flex items-center gap-2 rounded-md px-2 py-1 text-sm">
+                  <Clock3 className="size-3 text-base-content/60" />
+                  <span className="truncate">{request.user.email}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Drawer Overlay */}
       {isDrawerOpen && (
@@ -264,7 +309,9 @@ const Sidebar = () => {
         ))}
 
         {filteredUsers.length === 0 && (
-          <div className="text-center text-base-content/70 py-4">No online users</div>
+          <div className="text-center text-base-content/70 py-4 px-4">
+            No friends yet. Send a friend request by email to start chatting.
+          </div>
         )}
       </div>
     </aside>

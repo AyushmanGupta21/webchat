@@ -3,6 +3,7 @@ import { requireAuth } from "@/server/auth.js";
 import cloudinary from "@/server/cloudinary.js";
 import { dbQuery } from "@/server/db.js";
 import { getPusherServer } from "@/server/pusher.js";
+import { areUsersFriends } from "@/server/friends.js";
 import { MESSAGE_EVENTS, getUserChannelName } from "@/lib/realtime.js";
 
 async function resolveReplyMessage(replyToMessageId, senderId, receiverId) {
@@ -65,6 +66,11 @@ export async function POST(request, { params }) {
     const { text, image, mediaMeta, replyToMessageId } = await request.json();
     const { id: receiverId } = await params;
     const normalizedText = typeof text === "string" ? text.trim() : "";
+
+    const isFriend = await areUsersFriends(user._id, receiverId);
+    if (!isFriend) {
+      return NextResponse.json({ error: "You can chat only with friends" }, { status: 403 });
+    }
 
     if (!normalizedText && !image) {
       return NextResponse.json({ error: "Message text or media is required" }, { status: 400 });

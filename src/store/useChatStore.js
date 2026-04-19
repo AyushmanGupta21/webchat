@@ -25,8 +25,13 @@ const normalizeErrorMessage = (error, fallbackMessage) =>
 export const useChatStore = create((set, get) => ({
   messages: [],
   users: [],
+  friendRequestsIncoming: [],
+  friendRequestsOutgoing: [],
   selectedUser: null,
   isUsersLoading: false,
+  isFriendRequestsLoading: false,
+  isSendingFriendRequest: false,
+  isRespondingFriendRequest: false,
   isMessagesLoading: false,
   isWallpaperLoading: false,
   isWallpaperSaving: false,
@@ -43,9 +48,57 @@ export const useChatStore = create((set, get) => ({
       const res = await axiosInstance.get("/messages/users");
       set({ users: res.data });
     } catch (error) {
-      toast.error(error.response.data.message);
+      toast.error(normalizeErrorMessage(error, "Failed to load friends"));
     } finally {
       set({ isUsersLoading: false });
+    }
+  },
+
+  getFriendRequests: async () => {
+    set({ isFriendRequestsLoading: true });
+    try {
+      const res = await axiosInstance.get("/friends/requests");
+      set({
+        friendRequestsIncoming: res.data?.incoming || [],
+        friendRequestsOutgoing: res.data?.outgoing || [],
+      });
+    } catch (error) {
+      toast.error(normalizeErrorMessage(error, "Failed to load friend requests"));
+    } finally {
+      set({ isFriendRequestsLoading: false });
+    }
+  },
+
+  sendFriendRequest: async (email) => {
+    set({ isSendingFriendRequest: true });
+    try {
+      const res = await axiosInstance.post("/friends/request", { email });
+      await get().getFriendRequests();
+      return res.data?.request || null;
+    } catch (error) {
+      const message = normalizeErrorMessage(error, "Failed to send friend request");
+      throw new Error(message);
+    } finally {
+      set({ isSendingFriendRequest: false });
+    }
+  },
+
+  respondToFriendRequest: async (requestId, action) => {
+    set({ isRespondingFriendRequest: true });
+    try {
+      const res = await axiosInstance.patch(`/friends/requests/${requestId}`, { action });
+
+      if (action === "accept") {
+        await get().getUsers();
+      }
+
+      await get().getFriendRequests();
+      return res.data;
+    } catch (error) {
+      const message = normalizeErrorMessage(error, "Failed to update friend request");
+      throw new Error(message);
+    } finally {
+      set({ isRespondingFriendRequest: false });
     }
   },
 
@@ -55,7 +108,7 @@ export const useChatStore = create((set, get) => ({
       const res = await axiosInstance.get(`/messages/${userId}`);
       set({ messages: res.data });
     } catch (error) {
-      toast.error(error.response.data.message);
+      toast.error(normalizeErrorMessage(error, "Failed to load messages"));
     } finally {
       set({ isMessagesLoading: false });
     }

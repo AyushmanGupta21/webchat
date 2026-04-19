@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/server/auth.js";
 import { getPusherServer } from "@/server/pusher.js";
+import { areUsersFriends } from "@/server/friends.js";
 import {
   CALL_SIGNAL_EVENT,
   CALL_SIGNAL_TYPES,
@@ -22,6 +23,11 @@ export async function POST(request, { params }) {
     const { id: receiverId } = await params;
     if (!receiverId) {
       return NextResponse.json({ message: "Receiver id is required" }, { status: 400 });
+    }
+
+    const isFriend = await areUsersFriends(user._id, receiverId);
+    if (!isFriend) {
+      return NextResponse.json({ message: "Calls are allowed only between friends" }, { status: 403 });
     }
 
     const payload = await request.json().catch(() => ({}));

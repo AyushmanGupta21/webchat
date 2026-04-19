@@ -30,6 +30,60 @@ async function ensureSchema(pool) {
       `);
 
       await pool.query(`
+        CREATE TABLE IF NOT EXISTS friend_requests (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          receiver_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          status TEXT NOT NULL DEFAULT 'pending',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          responded_at TIMESTAMPTZ,
+          CONSTRAINT friend_requests_not_self CHECK (sender_id <> receiver_id),
+          CONSTRAINT friend_requests_status_valid CHECK (
+            status IN ('pending', 'accepted', 'rejected', 'canceled')
+          )
+        );
+      `);
+
+      await pool.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_friend_requests_pending_pair
+        ON friend_requests (sender_id, receiver_id)
+        WHERE status = 'pending';
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_friend_requests_receiver_status_created
+        ON friend_requests (receiver_id, status, created_at DESC);
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_friend_requests_sender_status_created
+        ON friend_requests (sender_id, status, created_at DESC);
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS friendships (
+          id BIGSERIAL PRIMARY KEY,
+          user_a_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          user_b_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          CONSTRAINT friendships_not_self CHECK (user_a_id <> user_b_id),
+          CONSTRAINT friendships_ordered_pair CHECK (user_a_id < user_b_id),
+          UNIQUE (user_a_id, user_b_id)
+        );
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_friendships_user_a
+        ON friendships (user_a_id, created_at DESC);
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_friendships_user_b
+        ON friendships (user_b_id, created_at DESC);
+      `);
+
+      await pool.query(`
         CREATE TABLE IF NOT EXISTS messages (
           id BIGSERIAL PRIMARY KEY,
           sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
