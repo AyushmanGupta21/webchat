@@ -347,8 +347,11 @@ const ChatContainer = () => {
                 </div>
 
                 <div className="chat-header mb-1 flex items-center gap-1">
-                  <time className="text-xs opacity-60 ml-1">{formatMessageTime(message.createdAt)}</time>
-                  {message.editedAt && <span className="text-[10px] opacity-60">edited</span>}
+                  <span className="text-[11px] opacity-60 ml-1">
+                    {message.editedAt
+                      ? `edited ${formatMessageTime(message.createdAt)}`
+                      : formatMessageTime(message.createdAt)}
+                  </span>
                 </div>
 
                 <div

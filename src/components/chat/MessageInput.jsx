@@ -512,21 +512,25 @@ const MessageInput = () => {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleMediaChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const setSelectedMediaFile = (file) => {
+    if (!file) return false;
+
+    if (editingMessage) {
+      toast.error("Finish editing before attaching media.");
+      return false;
+    }
 
     const isImage = file.type.startsWith("image/");
     const isVideo = file.type.startsWith("video/");
 
     if (!isImage && !isVideo) {
       toast.error("Please select an image or video file");
-      return;
+      return false;
     }
 
     if (file.size > 100 * 1024 * 1024) {
       toast.error("Media must be 100MB or smaller");
-      return;
+      return false;
     }
 
     cancelActiveUpload();
@@ -544,6 +548,40 @@ const MessageInput = () => {
     startMediaUpload(file, { silent: true }).catch(() => {
       // Error state is already set in startMediaUpload.
     });
+
+    return true;
+  };
+
+  const handleMediaChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setSelectedMediaFile(file);
+  };
+
+  const handleInputPaste = (event) => {
+    const clipboardItems = Array.from(event.clipboardData?.items || []);
+    const imageItem = clipboardItems.find(
+      (item) => item.kind === "file" && item.type.startsWith("image/")
+    );
+
+    if (!imageItem) return;
+
+    const clipboardFile = imageItem.getAsFile();
+    if (!clipboardFile) return;
+
+    event.preventDefault();
+
+    const extension = clipboardFile.type.split("/")[1] || "png";
+    const fileName = `clipboard-image-${Date.now()}.${extension}`;
+    const imageFile = new File([clipboardFile], fileName, {
+      type: clipboardFile.type,
+    });
+
+    const wasAccepted = setSelectedMediaFile(imageFile);
+    if (wasAccepted) {
+      toast.success("Image pasted from clipboard");
+    }
   };
 
   const removeMedia = () => {
@@ -929,6 +967,7 @@ const MessageInput = () => {
             placeholder={editingMessage ? "Edit message..." : "Type a message..."}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onPaste={handleInputPaste}
           />
 
           <button
