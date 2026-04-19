@@ -49,8 +49,8 @@ const Sidebar = () => {
 
   useEffect(() => {
     const refreshTimer = window.setInterval(() => {
-      getFriendRequests();
-      getUsers();
+      getFriendRequests({ silent: true });
+      getUsers({ silent: true });
     }, 15000);
 
     return () => window.clearInterval(refreshTimer);

@@ -9,6 +9,24 @@ const ChatSearchPopup = ({ isOpen, selectedUser, onClose }) => {
   const [results, setResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const popupRef = useRef(null);
+  const dateInputRef = useRef(null);
+
+  const openDatePicker = () => {
+    const input = dateInputRef.current;
+    if (!input) return;
+
+    if (typeof input.showPicker === "function") {
+      try {
+        input.showPicker();
+        return;
+      } catch {
+        // Fall back to click-based picker open for browsers that reject showPicker.
+      }
+    }
+
+    input.focus();
+    input.click();
+  };
 
   useEffect(() => {
     if (!isOpen) {
@@ -88,16 +106,38 @@ const ChatSearchPopup = ({ isOpen, selectedUser, onClose }) => {
           />
         </label>
 
-        <label className="btn btn-ghost btn-circle btn-sm" title="Search by date">
+        <button
+          type="button"
+          className="btn btn-ghost btn-circle btn-sm"
+          title="Search by date"
+          onClick={openDatePicker}
+        >
           <Calendar className="size-4" />
-          <input
-            type="date"
-            className="hidden"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-          />
-        </label>
+        </button>
+
+        <input
+          ref={dateInputRef}
+          type="date"
+          className="absolute h-0 w-0 opacity-0 pointer-events-none"
+          tabIndex={-1}
+          value={date}
+          onChange={(event) => setDate(event.target.value)}
+          aria-label="Search date"
+        />
       </div>
+
+      {date && (
+        <div className="mb-2 flex items-center gap-2">
+          <span className="badge badge-outline badge-sm">Date: {date}</span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs"
+            onClick={() => setDate("")}
+          >
+            Clear date
+          </button>
+        </div>
+      )}
 
       <div className="max-h-72 overflow-y-auto rounded-xl border border-base-300 bg-base-100">
         {isSearching && <div className="p-3 text-sm text-base-content/70">Searching...</div>}

@@ -42,20 +42,26 @@ export const useChatStore = create((set, get) => ({
   subscribedChannelName: null,
   realtimeHandlers: null,
 
-  getUsers: async () => {
-    set({ isUsersLoading: true });
+  getUsers: async ({ silent = false } = {}) => {
+    if (!silent) {
+      set({ isUsersLoading: true });
+    }
     try {
       const res = await axiosInstance.get("/messages/users");
       set({ users: res.data });
     } catch (error) {
       toast.error(normalizeErrorMessage(error, "Failed to load friends"));
     } finally {
-      set({ isUsersLoading: false });
+      if (!silent) {
+        set({ isUsersLoading: false });
+      }
     }
   },
 
-  getFriendRequests: async () => {
-    set({ isFriendRequestsLoading: true });
+  getFriendRequests: async ({ silent = false } = {}) => {
+    if (!silent) {
+      set({ isFriendRequestsLoading: true });
+    }
     try {
       const res = await axiosInstance.get("/friends/requests");
       set({
@@ -65,7 +71,9 @@ export const useChatStore = create((set, get) => ({
     } catch (error) {
       toast.error(normalizeErrorMessage(error, "Failed to load friend requests"));
     } finally {
-      set({ isFriendRequestsLoading: false });
+      if (!silent) {
+        set({ isFriendRequestsLoading: false });
+      }
     }
   },
 
