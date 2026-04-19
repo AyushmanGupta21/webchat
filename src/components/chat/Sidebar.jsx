@@ -47,6 +47,15 @@ const Sidebar = () => {
     getFriendRequests();
   }, [getUsers, getFriendRequests]);
 
+  useEffect(() => {
+    const refreshTimer = window.setInterval(() => {
+      getFriendRequests();
+      getUsers();
+    }, 15000);
+
+    return () => window.clearInterval(refreshTimer);
+  }, [getFriendRequests, getUsers]);
+
   const filteredUsers = useMemo(() => {
     const keyword = friendSearchTerm.trim().toLowerCase();
     if (!keyword) return users;
