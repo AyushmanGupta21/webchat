@@ -264,7 +264,11 @@ const MessageInput = () => {
   const [text, setText] = useState("");
   const [mediaPreview, setMediaPreview] = useState(null);
   const [mediaFile, setMediaFile] = useState(null);
+  const [uploadedMediaUrl, setUploadedMediaUrl] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState("");
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [pickerTab, setPickerTab] = useState("emoji");
   const [mediaSearch, setMediaSearch] = useState("");
@@ -275,6 +279,9 @@ const MessageInput = () => {
   const fileInputRef = useRef(null);
   const pickerRef = useRef(null);
   const pickerToggleRef = useRef(null);
+  const uploadPromiseRef = useRef(null);
+  const uploadAbortRef = useRef(null);
+  const uploadSessionRef = useRef(0);
   const { sendMessage } = useChatStore();
 
   useEffect(() => {
@@ -372,28 +379,44 @@ const MessageInput = () => {
     formData.append("signature", signaturePayload.signature);
     formData.append("folder", signaturePayload.folder);
 
-    const uploadResponse = await fetch(
-      `https://api.cloudinary.com/v1_1/${signaturePayload.cloudName}/${signaturePayload.resourceType}/upload`,
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
+    const uploadPayload = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      uploadAbortRef.current = () => xhr.abort();
 
-    if (!uploadResponse.ok) {
-      let errorMessage = "Cloud upload failed";
+      xhr.open(
+        "POST",
+        `https://api.cloudinary.com/v1_1/${signaturePayload.cloudName}/${signaturePayload.resourceType}/upload`
+      );
 
-      try {
-        const payload = await uploadResponse.json();
-        errorMessage = payload?.error?.message || errorMessage;
-      } catch {
-        // Ignore JSON parse failures for non-JSON error payloads.
-      }
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const nextProgress = Math.max(1, Math.round((event.loaded / event.total) * 100));
+        setUploadProgress((currentProgress) => Math.max(currentProgress, nextProgress));
+      };
 
-      throw new Error(errorMessage);
-    }
+      xhr.onerror = () => reject(new Error("Cloud upload failed"));
+      xhr.onabort = () => reject(new Error("Upload canceled"));
 
-    const uploadPayload = await uploadResponse.json();
+      xhr.onload = () => {
+        let payload;
+
+        try {
+          payload = JSON.parse(xhr.responseText || "{}");
+        } catch {
+          reject(new Error("Cloud upload returned an invalid response"));
+          return;
+        }
+
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(new Error(payload?.error?.message || "Cloud upload failed"));
+          return;
+        }
+
+        resolve(payload);
+      };
+
+      xhr.send(formData);
+    });
 
     if (!uploadPayload?.secure_url) {
       throw new Error("Cloud upload did not return a secure URL");
@@ -402,9 +425,71 @@ const MessageInput = () => {
     return uploadPayload.secure_url;
   };
 
+  const cancelActiveUpload = () => {
+    uploadSessionRef.current += 1;
+    const abortUpload = uploadAbortRef.current;
+    uploadAbortRef.current = null;
+    uploadPromiseRef.current = null;
+
+    if (abortUpload) {
+      abortUpload();
+    }
+  };
+
+  const startMediaUpload = async (file, { silent = false } = {}) => {
+    const sessionId = uploadSessionRef.current + 1;
+    uploadSessionRef.current = sessionId;
+
+    setUploadError("");
+    setUploadProgress(0);
+    setUploadedMediaUrl(null);
+    setIsUploadingMedia(true);
+
+    const uploadPromise = (async () => {
+      try {
+        const cloudUrl = await uploadMediaToCloudinary(file);
+        if (sessionId !== uploadSessionRef.current) return null;
+
+        setUploadProgress(100);
+        setUploadedMediaUrl(cloudUrl);
+        return cloudUrl;
+      } catch (error) {
+        if (sessionId !== uploadSessionRef.current) return null;
+
+        const message = error?.message || "Media upload failed";
+        if (message !== "Upload canceled") {
+          setUploadError(message);
+          if (!silent) {
+            toast.error(message);
+          }
+        }
+
+        throw error;
+      } finally {
+        if (sessionId === uploadSessionRef.current) {
+          setIsUploadingMedia(false);
+          uploadAbortRef.current = null;
+          uploadPromiseRef.current = null;
+        }
+      }
+    })();
+
+    uploadPromiseRef.current = uploadPromise;
+    return uploadPromise;
+  };
+
+  useEffect(() => {
+    return () => {
+      cancelActiveUpload();
+    };
+  }, []);
+
   const clearComposer = () => {
     setText("");
     setMediaFile(null);
+    setUploadedMediaUrl(null);
+    setUploadProgress(0);
+    setUploadError("");
     setMediaPreview((previousPreview) => {
       revokeObjectUrl(previousPreview);
       return null;
@@ -430,16 +515,30 @@ const MessageInput = () => {
       return;
     }
 
+    cancelActiveUpload();
     setMediaFile(file);
+    setUploadError("");
+    setUploadProgress(0);
+    setUploadedMediaUrl(null);
+
     const objectUrl = URL.createObjectURL(file);
     setMediaPreview((previousPreview) => {
       revokeObjectUrl(previousPreview);
       return objectUrl;
     });
+
+    startMediaUpload(file, { silent: true }).catch(() => {
+      // Error state is already set in startMediaUpload.
+    });
   };
 
   const removeMedia = () => {
+    cancelActiveUpload();
     setMediaFile(null);
+    setUploadedMediaUrl(null);
+    setUploadProgress(0);
+    setUploadError("");
+    setIsUploadingMedia(false);
     setMediaPreview((previousPreview) => {
       revokeObjectUrl(previousPreview);
       return null;
@@ -450,15 +549,27 @@ const MessageInput = () => {
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!text.trim() && !mediaFile) return;
+    if ((!text.trim() && !mediaFile) || isSendingMessage) return;
 
     try {
+      setIsSendingMessage(true);
       let imagePayload;
       let mediaMeta;
 
       if (mediaFile) {
-        setIsUploadingMedia(true);
-        imagePayload = await uploadMediaToCloudinary(mediaFile);
+        if (uploadedMediaUrl) {
+          imagePayload = uploadedMediaUrl;
+        } else {
+          const existingUploadPromise = uploadPromiseRef.current;
+          const uploadPromise =
+            existingUploadPromise || startMediaUpload(mediaFile, { silent: false });
+          imagePayload = await uploadPromise;
+        }
+
+        if (!imagePayload) {
+          throw new Error("Media upload did not complete");
+        }
+
         mediaMeta = {
           mimeType: mediaFile.type || null,
           fileName: mediaFile.name || null,
@@ -476,7 +587,7 @@ const MessageInput = () => {
       console.error("Failed to send message:", error);
       toast.error(error?.message || "Unable to send media. Try again.");
     } finally {
-      setIsUploadingMedia(false);
+      setIsSendingMessage(false);
     }
   };
 
@@ -695,6 +806,32 @@ const MessageInput = () => {
               <X className="size-3" />
             </button>
           </div>
+
+          <div className="flex flex-col gap-1 text-xs text-base-content/70">
+            {isUploadingMedia && (
+              <>
+                <span>Uploading media... {uploadProgress}%</span>
+                <progress className="progress progress-primary w-36" value={uploadProgress} max="100" />
+              </>
+            )}
+
+            {!isUploadingMedia && uploadedMediaUrl && <span>Media is ready to send.</span>}
+
+            {!isUploadingMedia && uploadError && (
+              <button
+                type="button"
+                className="btn btn-xs btn-ghost w-fit px-0"
+                onClick={() => {
+                  if (!mediaFile) return;
+                  startMediaUpload(mediaFile, { silent: false }).catch(() => {
+                    // Error state is already set in startMediaUpload.
+                  });
+                }}
+              >
+                Retry upload
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -733,7 +870,7 @@ const MessageInput = () => {
             className={`hidden sm:flex btn btn-circle ${mediaPreview ? "text-primary" : "text-base-content/60"}`}
             onClick={() => fileInputRef.current?.click()}
             title="Attach media"
-            disabled={isUploadingMedia}
+            disabled={isSendingMessage}
           >
             <Paperclip className="size-5" />
           </button>
@@ -742,9 +879,9 @@ const MessageInput = () => {
         <button
           type="submit"
           className="btn btn-sm btn-circle"
-          disabled={(!text.trim() && !mediaFile) || isUploadingMedia}
+          disabled={(!text.trim() && !mediaFile) || isSendingMessage}
         >
-          {isUploadingMedia ? <span className="loading loading-spinner loading-xs" /> : <Send className="size-5" />}
+          {isSendingMessage ? <span className="loading loading-spinner loading-xs" /> : <Send className="size-5" />}
         </button>
       </form>
     </div>
